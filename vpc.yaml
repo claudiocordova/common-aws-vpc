@@ -1,0 +1,152 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Metadata:
+    Generator: "Claudio Cordova"
+Description: AWS CloudFormation template to create a new VPC
+Parameters:
+
+  VPCName:
+    Type: String
+    Description: VPC Name
+    Default: 'Deployment'
+
+  VpcAvailabilityZones:
+    Type: CommaDelimitedList
+    Description: 'Optional - Comma-delimited list of two VPC availability zones in which to create subnets'
+    Default: ''
+  VpcCidrBlock:
+    Type: String
+    Description: Optional - CIDR/IP range for the VPC
+    Default: 10.0.0.0/16
+  SubnetCidrBlock1:
+    Type: String
+    Description: Optional - CIDR/IP range for the VPC
+    Default: 10.0.0.0/24
+  SubnetCidrBlock2:
+    Type: String
+    Description: Optional - CIDR/IP range for the VPC
+    Default: 10.0.1.0/24
+
+
+Conditions:
+  UseSpecifiedVpcAvailabilityZones: !Not [!Equals [!Join ['', !Ref 'VpcAvailabilityZones'],'']]
+
+
+Resources:
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref 'VpcCidrBlock'
+      EnableDnsSupport: 'true'
+      EnableDnsHostnames: 'true'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join [' ', ['Git', !Ref 'VPCName', '-', 'VPC']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for git deployments', !Ref 'VPCName']]
+  PublicSubnetAz1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'Vpc'
+      CidrBlock: !Ref 'SubnetCidrBlock1'
+      AvailabilityZone: !If
+       - UseSpecifiedVpcAvailabilityZones
+       - !Select ['0', !Ref 'VpcAvailabilityZones']
+       - !Select
+         - '0'
+         - Fn::GetAZs:
+             !Ref AWS::Region
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join [' ', ['Git', !Ref 'VPCName', '-', 'Public Subnet 1']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for git deployments', !Ref 'VPCName']]
+  PublicSubnetAz2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref 'Vpc'
+      CidrBlock: !Ref 'SubnetCidrBlock2'
+      AvailabilityZone: !If
+       - UseSpecifiedVpcAvailabilityZones
+       - !Select ['1', !Ref 'VpcAvailabilityZones']
+       - !Select
+         - '1'
+         - Fn::GetAZs:
+             !Ref AWS::Region
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join [' ', ['Git', !Ref 'VPCName', '-', 'Public Subnet 2']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for git deployments', !Ref 'VPCName']]
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join [' ', ['Git', !Ref 'VPCName', '-', 'InternetGateway']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for git deployments', !Ref 'VPCName']]
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref 'Vpc'
+      InternetGatewayId: !Ref 'InternetGateway'
+  RouteViaIgw:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref 'Vpc'
+      Tags:
+        -
+          Key: 'Name'
+          Value: !Join [' ', ['Git', !Ref 'VPCName', '-', 'RouteTable']]
+        -
+          Key: 'Description'
+          Value: !Join [' ', ['Created for git deployments', !Ref 'VPCName']]
+  PublicRouteViaIgw:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref 'RouteViaIgw'
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref 'InternetGateway'
+  PublicSubnet1RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'PublicSubnetAz1'
+      RouteTableId: !Ref 'RouteViaIgw'
+  PublicSubnet2RouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref 'PublicSubnetAz2'
+      RouteTableId: !Ref 'RouteViaIgw'
+
+
+
+
+
+Outputs:
+  Version:
+    Description: Cloudformation template version
+    Value: 3.0.0
+  VpcId:
+    Description: "VPC to deploy git projects"
+    Value: !Ref 'Vpc'
+    Export:          
+      Name: DeploymentVpcId
+  SubnetIds:
+    Description: "VPC Subnets to deploy git projects"
+    Value: !Join [',', [!Ref 'PublicSubnetAz1', !Ref 'PublicSubnetAz2']]
+    Export:          
+      Name: DeploymentSubnetIds
+
+
+
+
+     
